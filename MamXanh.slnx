@@ -1,0 +1,41 @@
+<Solution>
+  <Folder Name="/services/" />
+  <Folder Name="/services/ai-assistant/">
+    <Project Path="services/ai-assistant/AiAssistant.Api/AiAssistant.Api.csproj" />
+    <Project Path="services/ai-assistant/AiAssistant.Tests/AiAssistant.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/forum/">
+    <Project Path="services/forum/Forum.Api/Forum.Api.csproj" />
+    <Project Path="services/forum/Forum.Tests/Forum.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/garden/">
+    <Project Path="services/garden/Garden.Api/Garden.Api.csproj" />
+    <Project Path="services/garden/Garden.Tests/Garden.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/gateway/">
+    <Project Path="services/gateway/Gateway.Api/Gateway.Api.csproj" />
+  </Folder>
+  <Folder Name="/services/identity/">
+    <Project Path="services/identity/Identity.Api/Identity.Api.csproj" />
+    <Project Path="services/identity/Identity.Tests/Identity.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/notification/">
+    <Project Path="services/notification/Notification.Api/Notification.Api.csproj" />
+    <Project Path="services/notification/Notification.Tests/Notification.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/plant-catalog/">
+    <Project Path="services/plant-catalog/PlantCatalog.Api/PlantCatalog.Api.csproj" />
+    <Project Path="services/plant-catalog/PlantCatalog.Tests/PlantCatalog.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/reminder/">
+    <Project Path="services/reminder/Reminder.Api/Reminder.Api.csproj" />
+    <Project Path="services/reminder/Reminder.Tests/Reminder.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/sensor/">
+    <Project Path="services/sensor/Sensor.Api/Sensor.Api.csproj" />
+    <Project Path="services/sensor/Sensor.Tests/Sensor.Tests.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="shared/MamXanh.Contracts/MamXanh.Contracts.csproj" />
+  </Folder>
+</Solution>

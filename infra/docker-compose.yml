@@ -1,0 +1,32 @@
+# Mam Xanh - ha tang chay local (Postgres + RabbitMQ)
+# Chay tu thu muc infra:  docker compose up -d
+services:
+  postgres:
+    image: postgres:16
+    container_name: mamxanh-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: mamxanh-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"    # AMQP - cho cac service .NET
+      - "15672:15672"  # Trang quan ly tren trinh duyet
+      - "1883:1883"    # MQTT - cho ESP32 va simulator
+    volumes:
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    restart: unless-stopped
+
+volumes:
+  pgdata:

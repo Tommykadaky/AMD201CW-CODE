@@ -1,0 +1,68 @@
+### Test API bang extension REST Client trong VS Code (bam "Send Request" tren tung request)
+@host = http://localhost:5101
+
+### 1. Dang ky User moi
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "displayName": "Champ",
+  "email": "champ@test.com",
+  "password": "12345678"
+}
+
+### 2. Dang nhap User
+# @name userLogin
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "champ@test.com",
+  "password": "12345678"
+}
+
+### 3. Xem thong tin minh (dung token tu buoc 2)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{userLogin.response.body.accessToken}}
+
+### 4. User thuong goi API Admin -> phai bi 403 Forbidden
+GET {{host}}/api/admin/users
+Authorization: Bearer {{userLogin.response.body.accessToken}}
+
+### 5. Dang xuat User
+POST {{host}}/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{userLogin.response.body.refreshToken}}"
+}
+
+### 6. Dung lai refresh token da dang xuat -> phai bi 401
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{userLogin.response.body.refreshToken}}"
+}
+
+### 7. Dang nhap Admin
+# @name adminLogin
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@mamxanh.local",
+  "password": "Admin@12345"
+}
+
+### 8. Admin xem danh sach user -> 200 OK
+GET {{host}}/api/admin/users
+Authorization: Bearer {{adminLogin.response.body.accessToken}}
+
+### 9. Dang xuat Admin
+POST {{host}}/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{adminLogin.response.body.refreshToken}}"
+}
