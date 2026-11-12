@@ -1,8 +1,16 @@
-# Mầm Xanh – Smart Plant Care Companion
+# TreeO – Smart Plant Care Companion
 
 Dự án nhóm AMD201. Hướng dẫn này giúp clone về và chạy được trên máy Windows.
 
 Làm theo đúng thứ tự: **Phần 1 → Phần 2 → Phần 3**.
+
+**Tài liệu khác:**
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) – kiến trúc hệ thống (tiếng Anh, dùng được cho báo cáo)
+- [`docs/API.md`](docs/API.md) – danh sách mọi API
+- [`docs/DEPLOY.md`](docs/DEPLOY.md) – chạy cả hệ thống bằng Docker, CI/CD, deploy lên server
+- `HUONG-DAN-TAM.md`, `HUONG-DAN-THAN.md`, `HUONG-DAN-NGUYEN.md` – phần việc của từng người
+
+> **Đã đổi tên dự án từ MamXanh sang TreeO.** Ai đã cài dự án từ trước thì làm mục [Chuyển từ MamXanh sang TreeO](#chuyển-từ-mamxanh-sang-treeo-mỗi-máy-làm-1-lần) ở cuối file **một lần**.
 
 ---
 
@@ -52,9 +60,9 @@ cd ..
 Mở `infra/.env`, đổi 2 chỗ `doi_mat_khau_nay` thành mật khẩu bạn tự đặt (viết liền, không dấu, không dấu cách):
 
 ```
-POSTGRES_USER=mamxanh
+POSTGRES_USER=treeo
 POSTGRES_PASSWORD=mat_khau_cua_ban
-RABBITMQ_USER=mamxanh
+RABBITMQ_USER=treeo
 RABBITMQ_PASSWORD=mat_khau_cua_ban
 ```
 
@@ -78,7 +86,7 @@ docker compose up -d
 cd ..
 ```
 
-Thành công khi thấy `Container mamxanh-postgres Started` và `Container mamxanh-rabbitmq Started`. Trong Docker Desktop, nhóm `infra` có chấm xanh.
+Thành công khi thấy `Container treeo-postgres Started` và `Container treeo-rabbitmq Started`. Trong Docker Desktop, nhóm `infra` có chấm xanh.
 
 Từ lần sau chỉ cần mở Docker Desktop là 2 container này tự chạy lại.
 
@@ -86,7 +94,7 @@ Từ lần sau chỉ cần mở Docker Desktop là 2 container này tự chạy 
 
 ```powershell
 cd services/identity/Identity.Api
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=identity_db;Username=mamxanh;Password=MAT_KHAU_POSTGRES"
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=identity_db;Username=treeo;Password=MAT_KHAU_POSTGRES"
 ```
 
 Thay `MAT_KHAU_POSTGRES` bằng đúng `POSTGRES_PASSWORD` trong `infra/.env`.
@@ -104,7 +112,7 @@ dotnet run
 
 Thành công khi thấy:
 ```
-Da tao tai khoan Admin admin@mamxanh.local
+Da tao tai khoan Admin admin@treeo.local
 Now listening on: http://localhost:5101
 ```
 
@@ -158,7 +166,7 @@ Now listening on: http://localhost:5101
 
 - Gọi API cần đăng nhập thì gửi kèm header: `Authorization: Bearer <accessToken>`
 - Access token sống 60 phút, refresh token sống 7 ngày
-- Tài khoản Admin để thử (chỉ dùng local): `admin@mamxanh.local` / `Admin@12345`. Khi deploy thật phải đổi mật khẩu này và `Jwt:Key`.
+- Tài khoản Admin để thử (chỉ dùng local): `admin@treeo.local` / `Admin@12345`. Khi deploy thật phải đổi mật khẩu này và `Jwt:Key`.
 
 ---
 
@@ -166,9 +174,19 @@ Now listening on: http://localhost:5101
 
 | Địa chỉ | Là gì |
 |---|---|
+| `http://localhost:5100` | **API Gateway** – cổng chung, app chỉ cần gọi cổng này (`EXPO_PUBLIC_GATEWAY_URL`) |
+| `http://localhost:5100/health/all` | Kiểm tra mọi service còn sống không |
 | `http://localhost:5101` | Identity service (API) |
+| `http://localhost:5103` | Garden (chuỗi tưới cây) |
+| `http://localhost:5104` | Reminder (thời tiết) |
+| `http://localhost:5105` | Notification (thông báo) |
+| `http://localhost:5106` | AI Assistant |
+| `http://localhost:5107` | Forum |
+| `http://localhost:5182` | Sensor (cảm biến độ ẩm + máy bơm) |
 | `http://localhost:15672` | Trang quản lý RabbitMQ, đăng nhập bằng user/mật khẩu RabbitMQ trong `.env` |
 | `localhost:5432` | Postgres (không mở bằng trình duyệt) |
+
+Chạy Gateway: `cd services/gateway/Gateway.Api` rồi `dotnet run` (không cần database). Muốn chạy **cả hệ thống bằng Docker** thay vì mở nhiều terminal: xem `docs/DEPLOY.md`.
 
 ---
 
@@ -176,10 +194,10 @@ Now listening on: http://localhost:5101
 
 | Lỗi | Nguyên nhân | Cách sửa |
 |---|---|---|
-| `password authentication failed for user "mamxanh"` | Mật khẩu user-secrets khác mật khẩu Postgres | Chạy lại lệnh `dotnet user-secrets set` ở mục 3.2 với đúng mật khẩu trong `.env` |
-| Vẫn lỗi trên dù mật khẩu đã giống `.env` | Đổi `.env` sau khi Postgres đã tạo, Postgres vẫn giữ mật khẩu cũ | `docker exec -it mamxanh-postgres psql -U mamxanh -d postgres -c "ALTER USER mamxanh WITH PASSWORD 'MAT_KHAU';"` |
+| `password authentication failed for user "treeo"` | Mật khẩu user-secrets khác mật khẩu Postgres | Chạy lại lệnh `dotnet user-secrets set` ở mục 3.2 với đúng mật khẩu trong `.env` |
+| Vẫn lỗi trên dù mật khẩu đã giống `.env` | Đổi `.env` sau khi Postgres đã tạo, Postgres vẫn giữ mật khẩu cũ | `docker exec -it treeo-postgres psql -U treeo -d postgres -c "ALTER USER treeo WITH PASSWORD 'MAT_KHAU';"` |
 | `file is locked by "Identity.Api"` khi build | Service đang chạy ở đâu đó | `Ctrl + C` ở terminal đang chạy, hoặc `Get-Process Identity.Api \| Stop-Process` |
-| Không kết nối được database | Docker chưa mở hoặc container chưa chạy | Mở Docker Desktop, kiểm tra `mamxanh-postgres` có chấm xanh |
+| Không kết nối được database | Docker chưa mở hoặc container chưa chạy | Mở Docker Desktop, kiểm tra `treeo-postgres` có chấm xanh |
 | Không thấy chữ **Send Request** trong file `.http` | Chưa cài REST Client | Cài extension rồi đóng file mở lại |
 | Có container lạ tên ngẫu nhiên (vd `cranky_xxx`) trong Docker | Lỡ bấm Run trên image | Xóa nó đi, chỉ giữ nhóm `infra` |
 
@@ -198,3 +216,41 @@ dotnet ef migrations add TenThayDoi -o Data/Migrations
 ```
 
 Commit cả thư mục `Data/Migrations`. Người khác pull về chỉ cần `dotnet run`, bảng tự cập nhật.
+
+---
+
+## Chuyển từ MamXanh sang TreeO (mỗi máy làm 1 lần)
+
+Tên solution, thư viện chung, user database/RabbitMQ, tên container, exchange RabbitMQ và JWT đều đã đổi sang `treeo`. Máy đã cài từ trước đang có Postgres và RabbitMQ với user `mamxanh`, nên cần làm lại một lần.
+
+**1. Lấy code mới.** Pull từ GitHub, hoặc giải nén zip vào **một thư mục mới** (đừng chép đè lên thư mục cũ: thư mục `shared/MamXanh.Contracts` cũ còn sót sẽ gây lỗi build trùng). Nếu đã tự tạo migration cho Sensor thì chép thư mục `services/sensor/Sensor.Api/Data/Migrations` từ chỗ cũ sang.
+
+**2. Làm lại Postgres + RabbitMQ.** Việc này **xóa dữ liệu thử trên máy** (tài khoản, bài đăng, thông báo):
+
+```powershell
+cd infra
+docker compose --profile app down -v
+```
+
+Mở `infra/.env`, đổi `POSTGRES_USER=treeo` và `RABBITMQ_USER=treeo` (mật khẩu giữ nguyên hoặc đổi tùy ý), rồi:
+
+```powershell
+docker compose up -d
+cd ..
+```
+
+**3. Đặt lại chuỗi kết nối database cho mọi service.** Thay `MAT_KHAU_POSTGRES` bằng `POSTGRES_PASSWORD` trong `.env`, chạy ở thư mục gốc:
+
+```powershell
+$pg = "MAT_KHAU_POSTGRES"
+$dbs = @{ "identity/Identity.Api" = "identity_db"; "forum/Forum.Api" = "forum_db"; "garden/Garden.Api" = "garden_db"; "notification/Notification.Api" = "notification_db"; "sensor/Sensor.Api" = "sensor_db" }
+foreach ($p in $dbs.Keys) {
+  dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=$($dbs[$p]);Username=treeo;Password=$pg" --project "services/$p"
+}
+```
+
+Nếu đổi mật khẩu RabbitMQ ở bước 2 thì đặt lại `RabbitMq:Password` cho Garden, Reminder, Notification, Sensor (lệnh trong `HUONG-DAN-THAN.md` mục 2.4).
+
+**4. Build và chạy lại.** `dotnet build TreeO.slnx`, chạy các service như bình thường, rồi **đăng ký lại** tài khoản thử (`champ@test.com`). Tài khoản Admin mới là `admin@treeo.local` / `Admin@12345`. Trên app phải đăng nhập lại (token cũ không còn hợp lệ).
+
+**Nhánh đang làm dở** (code viết trước khi đổi tên): sửa `using MamXanh.Contracts.Events;` thành `using TreeO.Contracts.Events;`.

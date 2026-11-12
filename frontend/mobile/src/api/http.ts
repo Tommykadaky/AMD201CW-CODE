@@ -1,4 +1,3 @@
-import { AI_URL } from "./config";
 // Ham goi API dung chung: them header, doc loi tra ve thanh cau de hieu
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -8,12 +7,13 @@ export class ApiError extends Error {
 
 // Qua 15 giay khong co tra loi thi bao loi, thay vi de app quay mai (hay gap tren dien thoai khi sai mang)
 const TIMEOUT_MS = 15_000;
-// Rieng AI Assistant: mo hinh AI co the mat 20-40 giay de tra loi nen cho lau hon
+// Rieng AI Assistant: mo hinh AI co the mat 20-40 giay de tra loi nen cho lau hon.
+// Matched by path (not by AI_URL) so it also works when every URL is the API Gateway.
 const AI_TIMEOUT_MS = 90_000;
 
 export async function requestJson<T>(url: string, options: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), url.startsWith(AI_URL) ? AI_TIMEOUT_MS : TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), url.includes("/api/ai/") ? AI_TIMEOUT_MS : TIMEOUT_MS);
   let res: Response;
   try {
     res = await fetch(url, {

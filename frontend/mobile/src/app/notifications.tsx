@@ -16,6 +16,8 @@ const ICONS: Record<string, { icon: IconName; color: string; bg: string }> = {
   heatwave: { icon: "alert", color: colors.warnIcon, bg: colors.warnBg },
   streak: { icon: "flame", color: colors.sun, bg: colors.sunSoft },
   pump: { icon: "drop", color: colors.water, bg: colors.waterSoft },
+  soil_dry: { icon: "drop", color: colors.warnIcon, bg: colors.sunSoft },
+  water_tank: { icon: "alert", color: colors.danger, bg: colors.warnBg },
 };
 const FALLBACK = { icon: "bell" as IconName, color: colors.primary, bg: colors.primarySoft };
 

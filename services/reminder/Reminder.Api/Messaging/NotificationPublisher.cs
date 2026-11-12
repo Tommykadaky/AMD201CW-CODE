@@ -1,5 +1,5 @@
 using System.Text.Json;
-using MamXanh.Contracts.Events;
+using TreeO.Contracts.Events;
 using RabbitMQ.Client;
 
 namespace Reminder.Api.Messaging;

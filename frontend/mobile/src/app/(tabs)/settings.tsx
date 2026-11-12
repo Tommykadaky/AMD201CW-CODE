@@ -7,7 +7,8 @@ import { Card } from "../../components/Card";
 import { Icon, type IconName } from "../../components/Icon";
 import { Txt } from "../../components/Txt";
 import { useAuth } from "../../auth/AuthContext";
-import { useLang, type Lang } from "../../i18n/LanguageContext";
+import { timeAgo, useLang, type Lang, type Strings } from "../../i18n/LanguageContext";
+import { useDevices } from "../../hooks/useSensorData";
 import { colors, radius } from "../../theme";
 
 function InfoTile({ label, value }: { label: string; value: string }) {
@@ -33,9 +34,17 @@ function Row({ icon, label, top, href }: { icon: IconName; label: string; top?: 
   );
 }
 
+// Wi-Fi strength from RSSI (dBm): above -60 strong, above -75 fair, otherwise weak
+function wifiLabel(rssi: number | null, t: Strings) {
+  if (rssi == null) return "—";
+  const level = rssi > -60 ? t.strong : rssi > -75 ? t.fair : t.weak;
+  return `${level} · ${rssi} dBm`;
+}
+
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useLang();
+  const { device, loaded: deviceLoaded } = useDevices(10_000);
   const [leaving, setLeaving] = useState(false);
 
   async function handleLogout() {
@@ -92,23 +101,35 @@ export default function SettingsScreen() {
           </View>
         </Card>
 
-        {/* Thiet bi IoT (du lieu mau, se lay tu Sensor service) */}
-        <Card style={{ gap: 14 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <Icon name="chip" color={colors.primary} />
-            <Txt size={15} weight="semibold" style={{ flex: 1 }}>{t.device}</Txt>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primarySoft, paddingVertical: 4, paddingHorizontal: 10, borderRadius: radius.pill }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary }} />
-              <Txt size={12} weight="semibold" color={colors.primaryDark}>{t.online}</Txt>
+        {/* IoT device: live data from the Sensor service. Tap to pair / manage the device */}
+        <Pressable onPress={() => router.push("/pair-device")} accessibilityRole="button" accessibilityLabel={device ? t.manageDevice : t.pairDevice}>
+          <Card style={{ gap: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Icon name="chip" color={colors.primary} />
+              <Txt size={15} weight="semibold" style={{ flex: 1 }}>{t.device}</Txt>
+              {device ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: device.online ? colors.primarySoft : "#FDECEC", paddingVertical: 4, paddingHorizontal: 10, borderRadius: radius.pill }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: device.online ? colors.primary : colors.danger }} />
+                  <Txt size={12} weight="semibold" color={device.online ? colors.primaryDark : colors.danger}>{device.online ? t.online : t.deviceOffline}</Txt>
+                </View>
+              ) : null}
+              <Icon name="chevron" size={18} color={colors.muted} />
             </View>
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-            <InfoTile label={t.board} value="ESP32 · Desk-01" />
-            <InfoTile label={t.ip} value="192.168.1.24" />
-            <InfoTile label="Wi-Fi" value={`${t.strong} · −58 dBm`} />
-            <InfoTile label={t.lastSeen} value={t.justNow} />
-          </View>
-        </Card>
+            {device ? (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                <InfoTile label={t.board} value={`ESP32 · ${device.id}`} />
+                <InfoTile label={t.ip} value={device.ipAddress ?? "—"} />
+                <InfoTile label="Wi-Fi" value={wifiLabel(device.wifiRssi, t)} />
+                <InfoTile label={t.lastSeen} value={device.lastSeenAtUtc ? (device.online ? t.justNow : timeAgo(device.lastSeenAtUtc, t, lang)) : "—"} />
+              </View>
+            ) : deviceLoaded ? (
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <Txt size={13} color={colors.muted} style={{ flex: 1 }}>{t.noDevice}</Txt>
+                <Txt size={13} weight="semibold" color={colors.primaryDark}>{t.pairDevice}</Txt>
+              </View>
+            ) : null}
+          </Card>
+        </Pressable>
 
         {/* Google Sheets */}
         <Card>

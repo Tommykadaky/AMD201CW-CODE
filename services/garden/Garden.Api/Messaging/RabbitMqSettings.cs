@@ -5,6 +5,6 @@ public class RabbitMqSettings
 {
     public string Host { get; set; } = "localhost";
     public int Port { get; set; } = 5672;          // cong AMQP cua RabbitMQ trong docker-compose
-    public string User { get; set; } = "mamxanh";
+    public string User { get; set; } = "treeo";
     public string Password { get; set; } = "";
 }

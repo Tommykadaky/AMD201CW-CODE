@@ -66,4 +66,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// Liveness check for the API Gateway (/health/all) and Docker (no login needed)
+app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "forum" }));
+
 app.Run();

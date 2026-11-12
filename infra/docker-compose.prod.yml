@@ -1,0 +1,75 @@
+# Production overrides - use on the server together with the main file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app up -d
+#
+# Differences from local:
+#   - only the API Gateway is reachable from the internet (port 80); databases, RabbitMQ and the
+#     individual services are closed and talk to each other on the private Docker network
+#   - images are pulled from GitHub Container Registry (IMAGE_PREFIX in .env) instead of built here
+#   - containers always restart (also after the server reboots)
+#   - JWT_KEY and ADMIN_PASSWORD MUST be set in .env: the local defaults are public in the repository
+# The ESP32 then uses SERVER_URL "http://<server-address>" (the gateway forwards /api/sensors/...).
+
+# Refuse to start with the public development key
+x-prod-secrets: &prod-secrets
+  Jwt__Key: ${JWT_KEY:?Set JWT_KEY in infra/.env (32+ random characters) before deploying}
+
+services:
+  postgres:
+    ports: !reset []
+    restart: always
+
+  rabbitmq:
+    ports: !reset []
+    restart: always
+
+  identity:
+    environment:
+      <<: *prod-secrets
+      SeedAdmin__Password: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in infra/.env before deploying}
+    ports: !reset []
+    restart: always
+    pull_policy: always
+
+  forum:
+    environment: *prod-secrets
+    ports: !reset []
+    restart: always
+    pull_policy: always
+
+  garden:
+    environment: *prod-secrets
+    ports: !reset []
+    restart: always
+    pull_policy: always
+
+  reminder:
+    environment: *prod-secrets
+    ports: !reset []
+    restart: always
+    pull_policy: always
+
+  notification:
+    environment: *prod-secrets
+    ports: !reset []
+    restart: always
+    pull_policy: always
+
+  ai-assistant:
+    environment: *prod-secrets
+    ports: !reset []
+    restart: always
+    pull_policy: always
+
+  sensor:
+    environment: *prod-secrets
+    ports: !reset []
+    restart: always
+    pull_policy: always
+
+  gateway:
+    ports: !override
+      - "80:8080"
+    restart: always
+    pull_policy: always

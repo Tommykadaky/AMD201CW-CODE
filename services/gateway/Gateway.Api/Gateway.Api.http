@@ -1,6 +1,41 @@
-@Gateway.Api_HostAddress = http://localhost:5156
+### API Gateway - test requests (VS Code REST Client)
+### Start the gateway and the services you want to test first.
 
-GET {{Gateway.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+@gateway = http://localhost:5100
+
+### 1. Gateway is alive -> 200
+GET {{gateway}}/health
+
+### 2. Every service behind the gateway -> 200 if all are up, 503 + list if some are down
+GET {{gateway}}/health/all
+
+### 3. Login through the gateway (goes to Identity) -> 200
+# @name login
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "champ@test.com", "password": "12345678" }
 
 ###
+@token = {{login.response.body.accessToken}}
+
+### 4. Forum through the gateway -> 200
+GET {{gateway}}/api/forum/posts
+Authorization: Bearer {{token}}
+
+### 5. Weather through the gateway (goes to Reminder) -> 200
+GET {{gateway}}/api/weather
+Authorization: Bearer {{token}}
+
+### 6. Sensor devices through the gateway -> 200
+GET {{gateway}}/api/sensors/devices
+Authorization: Bearer {{token}}
+
+### 7. Rate limit: send this 11 times within a minute -> the 11th answers 429
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "nobody@test.com", "password": "wrong-password" }
+
+### 8. Unknown path -> 404 (no route)
+GET {{gateway}}/api/does-not-exist

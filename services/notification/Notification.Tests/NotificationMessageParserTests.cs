@@ -1,5 +1,5 @@
 using System.Text;
-using MamXanh.Contracts.Events;
+using TreeO.Contracts.Events;
 using Notification.Api.Data;
 using Notification.Api.Messaging;
 

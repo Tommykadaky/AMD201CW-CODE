@@ -1,6 +1,139 @@
-@Sensor.Api_HostAddress = http://localhost:5182
+### Sensor service - test requests (VS Code REST Client: click "Send Request" above each one)
+### Run them in order. Identity (5101) and Sensor (5182) must both be running.
 
-GET {{Sensor.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+@sensor = http://localhost:5182
+@identity = http://localhost:5101
+@deviceId = TREEO_SIM_01
+@deviceKey = sim-key-change-me-0123456789
+
+### 0. Health check -> 200
+GET {{sensor}}/health
+
+### 1. Device sends a reading (what the ESP32 does every 5 s) -> 200 with pumpSeconds/autoWatering
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: {{deviceKey}}
+
+{ "deviceId": "{{deviceId}}", "moisture": 42, "pumpOn": false, "wifiRssi": -58, "firmware": "http-test" }
+
+### 2. Same device with a WRONG key -> 401
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: wrong-key-wrong-key-wrong
+
+{ "deviceId": "{{deviceId}}", "moisture": 42, "pumpOn": false }
+
+### 3. Log in as a user to get a token
+# @name login
+POST {{identity}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "champ@test.com", "password": "12345678" }
 
 ###
+@token = {{login.response.body.accessToken}}
+
+### 4. Pair the device with this account -> 200
+POST {{sensor}}/api/sensors/devices
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "deviceId": "{{deviceId}}", "deviceKey": "{{deviceKey}}", "name": "Money Tree" }
+
+### 5. My devices (live moisture, online, pump) -> 200
+GET {{sensor}}/api/sensors/devices
+Authorization: Bearer {{token}}
+
+### 6. Water now for 5 seconds -> 202 (409 if the device has not reported in the last 30 s)
+POST {{sensor}}/api/sensors/devices/{{deviceId}}/water
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "seconds": 5 }
+
+### 7. Device's next reading picks up the command -> pumpSeconds = 5
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: {{deviceKey}}
+
+{ "deviceId": "{{deviceId}}", "moisture": 42, "pumpOn": false }
+
+### 8. Pump on ... (opens a PumpRun)
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: {{deviceKey}}
+
+{ "deviceId": "{{deviceId}}", "moisture": 45, "pumpOn": true }
+
+### 9. ... pump off (closes the PumpRun and sends a "pump" notification)
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: {{deviceKey}}
+
+{ "deviceId": "{{deviceId}}", "moisture": 63, "pumpOn": false }
+
+### 10. 24-hour chart data -> 24 points + pump runs
+GET {{sensor}}/api/sensors/devices/{{deviceId}}/history?hours=24
+Authorization: Bearer {{token}}
+
+### 11. Recent pump runs
+GET {{sensor}}/api/sensors/devices/{{deviceId}}/activity?limit=5
+Authorization: Bearer {{token}}
+
+### 12. Turn auto-watering off (the device gets autoWatering=false in its next reply)
+PATCH {{sensor}}/api/sensors/devices/{{deviceId}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "autoWatering": false }
+
+### ----- New rules (run 13 to 18 in order, within 30 s of each other so the device stays online) -----
+
+### 13. Water now -> 202 "Watering command sent to the device."
+POST {{sensor}}/api/sensors/devices/{{deviceId}}/water
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "seconds": 5 }
+
+### 14. Press it again -> 202 "A watering command is already waiting for the device." (no second run queued)
+POST {{sensor}}/api/sensors/devices/{{deviceId}}/water
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "seconds": 5 }
+
+### 15. The pump is already running (automatic run) -> pumpSeconds = 0: the command is HELD, not lost
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: {{deviceKey}}
+
+{ "deviceId": "{{deviceId}}", "moisture": 28, "pumpOn": true }
+
+### 16. Pump stopped -> pumpSeconds = 5: the held command is delivered now
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: {{deviceKey}}
+
+{ "deviceId": "{{deviceId}}", "moisture": 70, "pumpOn": false }
+
+### 17. Soil is very wet (90 %)
+POST {{sensor}}/api/sensors/readings
+Content-Type: application/json
+X-Device-Key: {{deviceKey}}
+
+{ "deviceId": "{{deviceId}}", "moisture": 90, "pumpOn": false }
+
+### 18. Water now on wet soil -> 409 "The soil is already wet (90%)..."
+POST {{sensor}}/api/sensors/devices/{{deviceId}}/water
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{ "seconds": 5 }
+
+### 19. Without a token -> 401
+GET {{sensor}}/api/sensors/devices
+
+### 20. Unpair (deletes this device's history) -> 204
+DELETE {{sensor}}/api/sensors/devices/{{deviceId}}
+Authorization: Bearer {{token}}

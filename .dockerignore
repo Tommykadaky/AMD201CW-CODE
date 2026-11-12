@@ -1,0 +1,15 @@
+# Keep the Docker build context small and free of secrets
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/*.user
+**/.env
+**/node_modules/
+.git/
+.github/
+frontend/
+firmware/
+tools/
+docs/
+*.md

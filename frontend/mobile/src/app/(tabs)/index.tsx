@@ -2,7 +2,8 @@
 // - Dien thoai: 1 cot (mockup "Mobile · Home Dashboard")
 // - Man hinh rong: 2 cot + bieu do 24h + hoat dong gan day (mockup "Web · Dashboard")
 // Thoi tiet (Reminder service), chuoi tuoi cay (Garden service) va chuong thong bao (Notification service) la DU LIEU THAT.
-// So lieu do am/hoat dong van la DU LIEU MAU - se thay bang Sensor service (phan cua Nguyen Le)
+// Moisture, 24h chart, pump activity and "Water now" come from the Sensor service (Nguyen Le's part).
+// With no sensor paired, demo values and a simulated pump are shown so the screen can still be demoed.
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Platform, Pressable, ScrollView, View } from "react-native";
 import { router } from "expo-router";
@@ -14,6 +15,8 @@ import { Toggle } from "../../components/Toggle";
 import { MoistureRing, moistureLevel } from "../../components/MoistureRing";
 import { MoistureChart } from "../../components/MoistureChart";
 import { useAuth } from "../../auth/AuthContext";
+import { sensorApi, type Device, type History } from "../../api/sensor";
+import { secondsSince, useDeviceHistory, useDevices, waterAndWait } from "../../hooks/useSensorData";
 import { StreakWeek } from "../../components/StreakWeek";
 import { useStreak, useUnreadCount, useWeather } from "../../hooks/useGardenData";
 import { useIsWide } from "../../hooks/useIsWide";
@@ -24,14 +27,63 @@ import { colors, radius } from "../../theme";
 
 const native = Platform.OS !== "web";
 
-// Du lieu mau cho bieu do 24h: do am giam dan, bom chay luc 15:00
-const HISTORY = [66, 64, 62, 60, 58, 56, 54, 51, 49, 46, 43, 40, 37, 34, 31, 68, 65, 61, 58, 55, 52, 49, 45];
-const ACTIVITY = [
-  { text: "Pump ran 6s — auto stop at 68%", time: "Today, 14:02", dot: colors.water },
-  { text: "Daily check-in — streak +1", time: "Today, 08:00", dot: colors.sun },
-  { text: "Heatwave alert sent", time: "Yesterday, 21:10", dot: "#E65100" },
-  { text: "Synced logs to Google Sheets", time: "Yesterday, 18:30", dot: colors.primary },
-];
+// Demo values shown only while no sensor is paired
+const DEMO_MOISTURE = 42;
+const PUMP_SECONDS = 5;
+
+// "12s ago" / "5m ago" / "3h ago"
+function ago(seconds: number | null, t: Strings) {
+  if (seconds == null) return "";
+  if (seconds < 60) return t.agoSeconds.replace("{n}", String(seconds));
+  if (seconds < 3600) return t.agoMinutes.replace("{n}", String(Math.floor(seconds / 60)));
+  return t.agoHours.replace("{n}", String(Math.floor(seconds / 3600)));
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+// "14:02" today, "09/11 14:02" on another day
+function clock(iso: string) {
+  const d = new Date(iso);
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toDateString() === new Date().toDateString() ? time : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${time}`;
+}
+
+// Hourly points -> chart values. Empty hours repeat the previous value; null if there is not enough data yet.
+function buildChart(history: History | null, t: Strings) {
+  if (!history) return null;
+  const known = history.points.filter((p) => p.average != null);
+  if (known.length < 2) return null;
+
+  let last = known[0].average as number;
+  const values = history.points.map((p) => (last = p.average ?? last));
+  const start = new Date(history.points[0].hourStartUtc).getTime();
+  const marks = history.pumpRuns
+    .map((r) => Math.floor((new Date(r.startedAtUtc).getTime() - start) / 3_600_000))
+    .filter((i) => i >= 0 && i < values.length);
+  const hourLabel = (i: number) => `${pad(new Date(history.points[i].hourStartUtc).getHours())}:00`;
+  const n = values.length;
+  const axis = [0, Math.round(n / 4), Math.round(n / 2), Math.round((3 * n) / 4)].map(hourLabel).concat(t.now);
+  return { values, marks, axis };
+}
+
+// Latest pump runs for the "Recent activity" card
+function activityItems(history: History | null, t: Strings) {
+  return [...(history?.pumpRuns ?? [])]
+    .reverse()
+    .slice(0, 4)
+    .map((r) => ({
+      key: String(r.id),
+      text:
+        r.endedAtUtc == null
+          ? t.activityRunning
+          : (r.trigger === "manual" ? t.activityManual : t.activityAuto)
+              .replace("{s}", String(r.durationSeconds ?? 0))
+              .replace("{before}", String(r.moistureBefore ?? "?"))
+              .replace("{after}", String(r.moistureAfter ?? "?")),
+      time: clock(r.startedAtUtc),
+      dot: r.trigger === "manual" ? colors.primary : colors.water,
+    }));
+}
 
 function greeting() {
   const h = new Date().getHours();
@@ -182,11 +234,12 @@ function WeatherCard({ wide, weather, loading, error }: { wide?: boolean; weathe
 }
 
 function StatusPill({ moisture, short }: { moisture: number; short?: boolean }) {
+  const { t } = useLang();
   const level = moistureLevel(moisture);
   const s = {
-    dry: { label: "Dry — needs water", fg: colors.dryText, bg: colors.sunSoft },
-    optimal: { label: "Optimal", fg: colors.primaryDark, bg: colors.primarySoft },
-    wet: { label: short ? "Wet" : "Wet — no watering needed", fg: colors.waterText, bg: colors.waterSoft },
+    dry: { label: t.statusDry, fg: colors.dryText, bg: colors.sunSoft },
+    optimal: { label: t.statusOptimal, fg: colors.primaryDark, bg: colors.primarySoft },
+    wet: { label: short ? t.statusWet : t.statusWetLong, fg: colors.waterText, bg: colors.waterSoft },
   }[level];
   return (
     <View style={{ backgroundColor: s.bg, paddingVertical: 4, paddingHorizontal: 12, borderRadius: radius.pill, alignSelf: "center" }}>
@@ -205,26 +258,30 @@ function StatTile({ label, value }: { label: string; value: string }) {
 }
 
 function WaterButton({ watering, onPress, flex }: { watering: boolean; onPress: () => void; flex?: boolean }) {
+  const { t } = useLang();
   return (
     <Pressable
       onPress={onPress}
+      disabled={watering}
       accessibilityRole="button"
-      style={{ flex: flex ? 1 : undefined, height: 48, borderRadius: radius.button, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
+      accessibilityState={{ busy: watering, disabled: watering }}
+      style={{ flex: flex ? 1 : undefined, height: 48, borderRadius: radius.button, backgroundColor: colors.primary, opacity: watering ? 0.75 : 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
     >
       <Icon name="drop" size={18} color="#FFFFFF" />
-      <Txt size={15} weight="semibold" color="#FFFFFF">{watering ? "Watering…" : "Water now"}</Txt>
+      <Txt size={15} weight="semibold" color="#FFFFFF">{watering ? t.wateringNow : t.waterNow}</Txt>
     </Pressable>
   );
 }
 
 function AutoRow({ auto, setAuto, sub }: { auto: boolean; setAuto: (v: boolean) => void; sub: string }) {
+  const { t } = useLang();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
       <View style={{ flex: 1, gap: 2 }}>
-        <Txt size={15} weight="medium">Auto-watering</Txt>
+        <Txt size={15} weight="medium">{t.autoWatering}</Txt>
         <Txt size={12} color={colors.muted}>{sub}</Txt>
       </View>
-      <Toggle value={auto} onChange={setAuto} label="Auto-watering" />
+      <Toggle value={auto} onChange={setAuto} label={t.autoWatering} />
     </View>
   );
 }
@@ -271,60 +328,178 @@ function FloatingPump({ watering, onPress, inset }: { watering: boolean; onPress
   );
 }
 
-function Toast({ moisture, wide, note }: { moisture: number; wide: boolean; note?: string | null }) {
+interface ToastData {
+  text: string;
+  note?: string | null;
+  error?: boolean;
+}
+
+function Toast({ toast, wide }: { toast: ToastData; wide: boolean }) {
   return (
     <View
       accessibilityLiveRegion="polite"
       style={[
-        { position: "absolute", top: wide ? 24 : 20, backgroundColor: colors.primaryDark, borderRadius: 14, padding: 14, flexDirection: "row", gap: 10, alignItems: "center", elevation: 6 },
+        { position: "absolute", top: wide ? 24 : 20, backgroundColor: toast.error ? colors.danger : colors.primaryDark, borderRadius: 14, padding: 14, flexDirection: "row", gap: 10, alignItems: "center", elevation: 6 },
         wide ? { right: 32 } : { left: 20, right: 20 },
       ]}
     >
-      <Icon name="check" size={18} color={colors.primaryLine} strokeWidth={2.5} />
+      <Icon name={toast.error ? "alert" : "check"} size={18} color={toast.error ? "#FFFFFF" : colors.primaryLine} strokeWidth={2.5} />
       <View style={{ flex: 1, gap: 2 }}>
-        <Txt weight="medium" color="#FFFFFF">Watering completed — soil is now {moisture}%</Txt>
-        {note ? <Txt size={12} color={colors.primaryLine}>{note}</Txt> : null}
+        <Txt weight="medium" color="#FFFFFF">{toast.text}</Txt>
+        {toast.note ? <Txt size={12} color={toast.error ? "#FFFFFF" : colors.primaryLine}>{toast.note}</Txt> : null}
       </View>
     </View>
+  );
+}
+
+// Shown instead of live data while no sensor is paired
+function PairBanner() {
+  const { t } = useLang();
+  return (
+    <Pressable
+      onPress={() => router.push("/pair-device")}
+      accessibilityRole="button"
+      style={{ alignSelf: "stretch", flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.primaryTint, borderWidth: 1, borderColor: colors.primaryLine, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12 }}
+    >
+      <Icon name="chip" size={18} color={colors.primaryDark} />
+      <Txt size={13} color={colors.primaryDark} style={{ flex: 1 }}>{t.demoData}</Txt>
+      <Txt size={13} weight="semibold" color={colors.primaryDark}>{t.pairSensor}</Txt>
+      <Icon name="chevron" size={16} color={colors.primaryDark} />
+    </Pressable>
   );
 }
 
 // ---------- Man hinh ----------
 
 export default function GardenScreen() {
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const { t } = useLang();
   const wide = useIsWide();
   const { weather, loading: weatherLoading, error: weatherError } = useWeather();
   const { streak, recordWatering } = useStreak();
-  const [note, setNote] = useState<string | null>(null);
-  const [moisture, setMoisture] = useState(42);
+  const { device, loaded: devicesLoaded, replace: replaceDevice } = useDevices();
+  const { history, reload: reloadHistory } = useDeviceHistory(device?.id ?? null);
+  const [demoMoisture, setDemoMoisture] = useState(DEMO_MOISTURE);
+  const [demoAuto, setDemoAuto] = useState(true);
   const [watering, setWatering] = useState(false);
-  const [auto, setAuto] = useState(true);
-  const [toast, setToast] = useState(false);
+  const [toast, setToast] = useState<ToastData | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const alive = useRef(true);
 
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  useEffect(
+    () => () => {
+      alive.current = false;
+      timers.current.forEach(clearTimeout);
+    },
+    [],
+  );
 
-  // Gia lap bom nuoc 3 giay (Sensor service la phan cua Nguyen Le). Khi bom xong thi ghi 1 lan tuoi vao chuoi (Garden service)
-  function pump() {
-    if (watering) return;
-    setWatering(true);
-    setToast(false);
-    timers.current.push(
-      setTimeout(() => {
-        setWatering(false);
-        setMoisture(65);
-        setToast(true);
-        setNote(null);
-        recordWatering().then((res) => {
-          if (!res) setNote(t.streakFailed);
-          else if (res.milestoneReached) setNote(t.streakMilestone);
-        });
-        timers.current.push(setTimeout(() => setToast(false), 4000));
-      }, 3000),
-    );
+  // ----- Values shown on screen: real sensor data, or demo values when nothing is paired -----
+  const hasReading = device?.moisture != null;
+  const moisture = device ? (device.moisture ?? 0) : demoMoisture;
+  const dry = device?.dryThreshold ?? 30;
+  const wet = device?.wetThreshold ?? 60;
+  const auto = device ? device.autoWatering : demoAuto;
+  const busy = watering || !!device?.pumpOn;
+  const plantName = device?.name ?? "Money Tree";
+  const boardLabel = device ? `ESP32 · ${device.id}` : "ESP32 · Desk-01";
+  const seen = secondsSince(device?.lastSeenAtUtc ?? null);
+  const statusLine = !device
+    ? t.demoData
+    : !hasReading
+      ? t.waitingFirstReading
+      : device.online
+        ? t.updatedAgo.replace("{time}", ago(seen, t))
+        : t.offlineSince.replace("{time}", ago(seen, t));
+  const autoSub = t.autoWateringSub.replace("{dry}", String(dry)).replace("{wet}", String(wet));
+  const chart = buildChart(history, t);
+  const activity = activityItems(history, t);
+  const showPairBanner = devicesLoaded && !device;
+
+  function showToast(next: ToastData) {
+    setToast(next);
+    timers.current.push(setTimeout(() => alive.current && setToast(null), 4500));
   }
+
+  // Count the watering in the streak (Garden service), then confirm on screen
+  async function finishWatering(finalMoisture: number, demo: boolean) {
+    const res = await recordWatering();
+    if (!alive.current) return;
+    const note = !res ? t.streakFailed : res.milestoneReached ? t.streakMilestone : demo ? t.demoWatering : null;
+    showToast({ text: t.wateringDone.replace("{m}", String(finalMoisture)), note });
+  }
+
+  async function pump() {
+    if (busy) return;
+    setToast(null);
+
+    // No sensor paired: 3-second simulation so the screen can still be demoed
+    if (!device) {
+      setWatering(true);
+      timers.current.push(
+        setTimeout(() => {
+          if (!alive.current) return;
+          setWatering(false);
+          setDemoMoisture(65);
+          finishWatering(65, true);
+        }, 3000),
+      );
+      return;
+    }
+
+    if (!device.online) {
+      showToast({ text: t.wateringOffline, error: true });
+      return;
+    }
+
+    // Real pump: send the command, wait until the device reports the pump has stopped
+    setWatering(true);
+    try {
+      const final = await waterAndWait(authFetch, device, PUMP_SECONDS, () => alive.current);
+      if (!alive.current) return;
+      replaceDevice(final);
+      reloadHistory();
+      await finishWatering(final.moisture ?? 0, false);
+    } catch (e) {
+      if (!alive.current) return;
+      const message = (e as Error).message;
+      showToast({ text: message === "timeout" ? t.wateringTimeout : message, error: true });
+    } finally {
+      if (alive.current) setWatering(false);
+    }
+  }
+
+  // Auto-watering switch: update the screen at once, then save; undo if saving fails
+  async function setAuto(value: boolean) {
+    if (!device) return setDemoAuto(value);
+    const previous: Device = device;
+    replaceDevice({ ...device, autoWatering: value });
+    try {
+      replaceDevice(await sensorApi(authFetch).update(device.id, { autoWatering: value }));
+    } catch (e) {
+      replaceDevice(previous);
+      showToast({ text: (e as Error).message, error: true });
+    }
+  }
+
+  const lastWateredLabel = device?.lastWateredAtUtc ? clock(device.lastWateredAtUtc) : device ? t.never : "14:02";
+  const chartView = chart ? (
+    <MoistureChart
+      values={chart.values}
+      pumpMarks={chart.marks}
+      low={dry}
+      high={wet}
+      title={t.last24h}
+      optimalLabel={t.optimalRange.replace("{dry}", String(dry)).replace("{wet}", String(wet))}
+      pumpLabel={t.pumpRan}
+      axisLabels={chart.axis}
+    />
+  ) : (
+    <View style={{ gap: 6 }}>
+      <Txt size={15} weight="semibold" accessibilityRole="header">{t.last24h}</Txt>
+      <Txt size={13} color={colors.muted}>{t.notEnoughData}</Txt>
+    </View>
+  );
 
   if (wide) {
     return (
@@ -338,11 +513,12 @@ export default function GardenScreen() {
             </View>
             <StreakPill streak={streak} />
             <Pressable
+              onPress={() => router.push("/pair-device")}
               accessibilityRole="button"
-              accessibilityLabel="Choose plant"
+              accessibilityLabel={device ? t.manageDevice : t.pairDevice}
               style={{ height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: "#FFFFFF", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 8 }}
             >
-              <Txt>Money Tree · Desk-01</Txt>
+              <Txt>{device ? `${plantName} · ${device.id}` : t.pairDevice}</Txt>
               <View style={{ transform: [{ rotate: "90deg" }] }}>
                 <Icon name="chevron" size={16} color={colors.muted} />
               </View>
@@ -355,24 +531,25 @@ export default function GardenScreen() {
             {/* Cot trai: do am + bieu do */}
             <Card style={{ flexGrow: 2, flexBasis: 560, minWidth: 0, borderRadius: radius.hero, padding: 24, gap: 20 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                <Txt size={18} weight="semibold" accessibilityRole="header">Live soil moisture</Txt>
-                <Txt size={13} color={colors.muted}>ESP32 Desk-01 · updated 12s ago</Txt>
+                <Txt size={18} weight="semibold" accessibilityRole="header">{t.liveMoisture}</Txt>
+                <Txt size={13} color={device && !device.online ? colors.danger : colors.muted}>{device ? `${boardLabel} · ${statusLine}` : statusLine}</Txt>
               </View>
+              {showPairBanner ? <PairBanner /> : null}
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 28, alignItems: "center" }}>
                 <MoistureRing moisture={moisture} />
                 <View style={{ flexGrow: 1, flexBasis: 240, gap: 14 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <Txt size={56} weight="bold" style={{ lineHeight: 60 }}>{moisture}%</Txt>
-                    <StatusPill moisture={moisture} short />
+                    <Txt size={56} weight="bold" style={{ lineHeight: 60 }}>{!device || hasReading ? `${moisture}%` : "--%"}</Txt>
+                    {!device || hasReading ? <StatusPill moisture={moisture} short /> : null}
                   </View>
                   <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
-                    <StatTile label="Last watered" value="14:02" />
-                    <StatTile label="Target range" value="30–70%" />
-                    <StatTile label="Auto stop" value="> 60%" />
+                    <StatTile label={t.lastWatered} value={lastWateredLabel} />
+                    <StatTile label={t.targetRange} value={`${dry}–${wet}%`} />
+                    <StatTile label={t.autoStop} value={`≥ ${wet}%`} />
                   </View>
                 </View>
               </View>
-              <MoistureChart values={[...HISTORY, moisture]} pumpHour={15} />
+              {chartView}
             </Card>
 
             {/* Cot phai */}
@@ -380,9 +557,9 @@ export default function GardenScreen() {
               <WeatherCard wide weather={weather} loading={weatherLoading} error={weatherError} />
 
               <Card style={{ borderRadius: radius.hero, padding: 20, gap: 14 }}>
-                <Txt size={16} weight="semibold" accessibilityRole="header">Quick controls</Txt>
-                <WaterButton watering={watering} onPress={pump} />
-                <AutoRow auto={auto} setAuto={setAuto} sub="Safety shut-off above 60%" />
+                <Txt size={16} weight="semibold" accessibilityRole="header">{t.quickControls}</Txt>
+                <WaterButton watering={busy} onPress={pump} />
+                <AutoRow auto={auto} setAuto={setAuto} sub={autoSub} />
                 <Pressable
                   accessibilityRole="button"
                   style={{ height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.primaryLine, backgroundColor: colors.primaryTint, alignItems: "center", justifyContent: "center" }}
@@ -392,9 +569,10 @@ export default function GardenScreen() {
               </Card>
 
               <Card style={{ borderRadius: radius.hero, padding: 20 }}>
-                <Txt size={16} weight="semibold" accessibilityRole="header">Recent activity</Txt>
-                {ACTIVITY.map((a) => (
-                  <View key={a.text} style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
+                <Txt size={16} weight="semibold" accessibilityRole="header">{t.recentActivity}</Txt>
+                {activity.length === 0 ? <Txt size={13} color={colors.muted}>{t.noActivity}</Txt> : null}
+                {activity.map((a) => (
+                  <View key={a.key} style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
                     <View style={{ width: 10, height: 10, borderRadius: 5, marginTop: 5, backgroundColor: a.dot }} />
                     <View style={{ gap: 2, flex: 1 }}>
                       <Txt weight="medium">{a.text}</Txt>
@@ -407,8 +585,8 @@ export default function GardenScreen() {
           </View>
         </ScrollView>
 
-        {toast && <Toast moisture={moisture} wide note={note} />}
-        <FloatingPump watering={watering} onPress={pump} inset={32} />
+        {toast && <Toast toast={toast} wide />}
+        <FloatingPump watering={busy} onPress={pump} inset={32} />
       </Screen>
     );
   }
@@ -433,21 +611,26 @@ export default function GardenScreen() {
 
         <Card style={{ borderRadius: radius.hero, padding: 20, alignItems: "center" }}>
           <View style={{ alignSelf: "stretch", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Txt size={16} weight="semibold">Money Tree</Txt>
-            <Txt size={12} color={colors.muted}>ESP32 · Desk-01</Txt>
+            <Txt size={16} weight="semibold" numberOfLines={1} style={{ flexShrink: 1 }}>{plantName}</Txt>
+            <Txt size={12} color={colors.muted}>{boardLabel}</Txt>
           </View>
+          {showPairBanner ? <PairBanner /> : null}
           <MoistureRing moisture={moisture} />
           <View style={{ alignItems: "center", gap: 4 }}>
-            <Txt size={40} weight="bold" style={{ lineHeight: 44 }}>{moisture}%</Txt>
-            <StatusPill moisture={moisture} />
-            <Txt size={12} color={colors.muted} style={{ marginTop: 4 }}>Soil moisture · updated 12s ago · tap for 24h history</Txt>
+            <Txt size={40} weight="bold" style={{ lineHeight: 44 }}>{!device || hasReading ? `${moisture}%` : "--%"}</Txt>
+            {!device || hasReading ? <StatusPill moisture={moisture} /> : null}
+            <Txt size={12} color={device && !device.online ? colors.danger : colors.muted} style={{ marginTop: 4, textAlign: "center" }}>
+              {t.soilMoisture} · {statusLine}
+            </Txt>
           </View>
         </Card>
 
+        {device ? <Card style={{ gap: 14 }}>{chartView}</Card> : null}
+
         <Card style={{ gap: 14 }}>
-          <Txt size={16} weight="semibold">Quick controls</Txt>
+          <Txt size={16} weight="semibold">{t.quickControls}</Txt>
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <WaterButton watering={watering} onPress={pump} flex />
+            <WaterButton watering={busy} onPress={pump} flex />
             <Pressable
               accessibilityRole="button"
               style={{ flex: 1, height: 48, borderRadius: radius.button, borderWidth: 1, borderColor: colors.primaryLine, backgroundColor: colors.primaryTint, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
@@ -456,12 +639,12 @@ export default function GardenScreen() {
               <Txt size={15} weight="semibold" color={colors.primaryDark}>Sync to Sheets</Txt>
             </Pressable>
           </View>
-          <AutoRow auto={auto} setAuto={setAuto} sub="Pump stops automatically above 60%" />
+          <AutoRow auto={auto} setAuto={setAuto} sub={autoSub} />
         </Card>
       </ScrollView>
 
-      {toast && <Toast moisture={moisture} wide={false} note={note} />}
-      <FloatingPump watering={watering} onPress={pump} inset={20} />
+      {toast && <Toast toast={toast} wide={false} />}
+      <FloatingPump watering={busy} onPress={pump} inset={20} />
     </Screen>
   );
 }

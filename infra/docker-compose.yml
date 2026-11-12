@@ -1,9 +1,45 @@
-# Mam Xanh - ha tang chay local (Postgres + RabbitMQ)
-# Chay tu thu muc infra:  docker compose up -d
+# TreeO - Docker Compose
+#
+# Run from the infra/ folder.
+#
+#   docker compose up -d
+#       Only Postgres + RabbitMQ (daily development: you run the services with "dotnet run").
+#
+#   docker compose --profile app up -d --build
+#       The WHOLE system in containers: databases, RabbitMQ, 7 services and the API Gateway.
+#       Stop "dotnet run" terminals first, the ports are the same.
+#
+#   docker compose --profile app down        stop everything (data is kept)
+#   NEVER add -v to "down": it deletes the database volume.
+#
+# Settings come from infra/.env (copy .env.example). Values after ":-" are local defaults.
+
+# ----- Settings shared by every .NET service -----
+x-dotnet-env: &dotnet-env
+  ASPNETCORE_ENVIRONMENT: Production
+  Jwt__Issuer: treeo-identity
+  Jwt__Audience: treeo
+  Jwt__Key: ${JWT_KEY:-chi-dung-de-chay-thu-tren-may-treeo-2026-doi-khi-deploy}
+  RabbitMq__Host: rabbitmq
+  RabbitMq__Port: "5672"
+  RabbitMq__User: ${RABBITMQ_USER}
+  RabbitMq__Password: ${RABBITMQ_PASSWORD}
+  Cors__Origins__0: ${CORS_ORIGIN_1:-http://localhost:8081}
+  Cors__Origins__1: ${CORS_ORIGIN_2:-http://localhost:19006}
+  Cors__Origins__2: ${CORS_ORIGIN_3:-http://localhost:5173}
+
+# Services start only after Postgres and RabbitMQ answer their health checks
+x-depends-infra: &depends-infra
+  postgres:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+
 services:
+  # ======================= Infrastructure (always) =======================
   postgres:
     image: postgres:16
-    container_name: mamxanh-postgres
+    container_name: treeo-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -12,20 +48,174 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:4-management
-    container_name: mamxanh-rabbitmq
+    container_name: treeo-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     ports:
-      - "5672:5672"    # AMQP - cho cac service .NET
-      - "15672:15672"  # Trang quan ly tren trinh duyet
-      - "1883:1883"    # MQTT - cho ESP32 va simulator
+      - "5672:5672"    # AMQP - for the .NET services
+      - "15672:15672"  # management page in the browser
+      - "1883:1883"    # MQTT - reserved for the ESP32
     volumes:
       - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # ======================= Application (profile "app") =======================
+  identity:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/identity:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/identity/Identity.Api/Dockerfile
+    container_name: treeo-identity
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=identity_db;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      SeedAdmin__Email: ${ADMIN_EMAIL:-admin@treeo.local}
+      SeedAdmin__Password: ${ADMIN_PASSWORD:-Admin@12345}
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__From: ${SMTP_FROM:-}
+    ports:
+      - "5101:8080"
+    depends_on: *depends-infra
+    restart: unless-stopped
+
+  forum:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/forum:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/forum/Forum.Api/Dockerfile
+    container_name: treeo-forum
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=forum_db;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      SeedSamplePosts: ${SEED_SAMPLE_POSTS:-true}
+    ports:
+      - "5107:8080"
+    depends_on: *depends-infra
+    restart: unless-stopped
+
+  garden:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/garden:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/garden/Garden.Api/Dockerfile
+    container_name: treeo-garden
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=garden_db;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+    ports:
+      - "5103:8080"
+    depends_on: *depends-infra
+    restart: unless-stopped
+
+  reminder:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/reminder:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/reminder/Reminder.Api/Dockerfile
+    container_name: treeo-reminder
+    environment:
+      <<: *dotnet-env
+    ports:
+      - "5104:8080"
+    depends_on: *depends-infra
+    restart: unless-stopped
+
+  notification:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/notification:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/notification/Notification.Api/Dockerfile
+    container_name: treeo-notification
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=notification_db;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+    ports:
+      - "5105:8080"
+    depends_on: *depends-infra
+    restart: unless-stopped
+
+  ai-assistant:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/ai-assistant:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/ai-assistant/AiAssistant.Api/Dockerfile
+    container_name: treeo-ai-assistant
+    environment:
+      <<: *dotnet-env
+      Ai__Provider: ${AI_PROVIDER:-gemini}
+      Gemini__ApiKey: ${GEMINI_API_KEY:-}
+      Anthropic__ApiKey: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "5106:8080"
+    depends_on: *depends-infra
+    restart: unless-stopped
+
+  sensor:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/sensor:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/sensor/Sensor.Api/Dockerfile
+    container_name: treeo-sensor
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=sensor_db;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+    ports:
+      - "5182:8080"    # the ESP32 can post here directly, or through the gateway
+    depends_on: *depends-infra
+    restart: unless-stopped
+
+  gateway:
+    profiles: ["app"]
+    image: ${IMAGE_PREFIX:-treeo}/gateway:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: services/gateway/Gateway.Api/Dockerfile
+    container_name: treeo-gateway
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Inside Docker, services find each other by service name on port 8080
+      ReverseProxy__Clusters__identity__Destinations__main__Address: http://identity:8080
+      ReverseProxy__Clusters__forum__Destinations__main__Address: http://forum:8080
+      ReverseProxy__Clusters__garden__Destinations__main__Address: http://garden:8080
+      ReverseProxy__Clusters__reminder__Destinations__main__Address: http://reminder:8080
+      ReverseProxy__Clusters__notification__Destinations__main__Address: http://notification:8080
+      ReverseProxy__Clusters__ai__Destinations__main__Address: http://ai-assistant:8080
+      ReverseProxy__Clusters__sensor__Destinations__main__Address: http://sensor:8080
+    ports:
+      - "${GATEWAY_PORT:-5100}:8080"
+    depends_on:
+      - identity
+      - forum
+      - garden
+      - reminder
+      - notification
+      - ai-assistant
+      - sensor
     restart: unless-stopped
 
 volumes:

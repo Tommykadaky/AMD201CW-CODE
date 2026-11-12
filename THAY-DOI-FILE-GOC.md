@@ -6,7 +6,7 @@ Phần của Thân **không sửa** code backend của người khác. Mọi ser
 
 | File | Thay đổi | Lý do |
 |---|---|---|
-| `shared/MamXanh.Contracts/Events/NotificationRequested.cs` | **Thêm file mới** (file `Class1.cs` mẫu giữ nguyên) | Hợp đồng tin nhắn RabbitMQ dùng chung |
+| `shared/TreeO.Contracts/Events/NotificationRequested.cs` | **Thêm file mới** (file `Class1.cs` mẫu giữ nguyên) | Hợp đồng tin nhắn RabbitMQ dùng chung |
 
 Các file `.csproj`, `appsettings*.json`, `launchSettings.json`, `*.http`, `Program.cs` của `Garden.Api`, `Reminder.Api`, `Notification.Api`, `AiAssistant.Api` là file mẫu do tạo project, được **ghi đè** để điền nội dung (project của Thân). Các file `WeatherForecast` mẫu được để nguyên.
 
@@ -27,7 +27,7 @@ File mới trong app (không ảnh hưởng gì có sẵn): `api/weather.ts`, `a
 
 ## Không sửa
 
-`Identity`, `Forum`, `Sensor`, `PlantCatalog`, `Gateway`, `infra/`, `firmware/`, `docs/`, `setup.ps1`, `README.md`, `MamXanh.slnx` (đã có sẵn đủ các project), `HUONG-DAN-TAM.md`.
+`Identity`, `Forum`, `Sensor`, `PlantCatalog`, `Gateway`, `infra/`, `firmware/`, `docs/`, `setup.ps1`, `README.md`, `TreeO.slnx` (đã có sẵn đủ các project), `HUONG-DAN-TAM.md`.
 
 ## Điểm lệch phát hiện trong zip (không do Thân gây ra)
 

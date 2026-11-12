@@ -1,4 +1,4 @@
-using MamXanh.Contracts.Events;
+using TreeO.Contracts.Events;
 using Notification.Api.Services;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;

@@ -1,0 +1,188 @@
+# CI/CD for TreeO
+#
+# On every pull request and every push to main:
+#   backend    build the whole .NET solution and run all unit tests
+#   migrations check that every database migration matches its models
+#   app        TypeScript check + web build of the Expo app
+#   firmware   compile the ESP32 firmware
+#   docker     build a Docker image for every service
+# Only on push to main:
+#   docker     also pushes the images to GitHub Container Registry (ghcr.io)
+#   deploy     (optional) updates the server over SSH - runs only when the DEPLOY_HOST variable is set
+#              (repository Settings -> Secrets and variables -> Actions). See docs/DEPLOY.md.
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push cancels the older run of the same branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  backend:
+    name: Backend build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Restore
+        run: dotnet restore TreeO.slnx
+      - name: Build
+        run: dotnet build TreeO.slnx -c Release --no-restore
+      - name: Test
+        run: dotnet test TreeO.slnx -c Release --no-build --logger "console;verbosity=normal"
+
+  migrations:
+    name: Database migrations up to date
+    runs-on: ubuntu-latest
+    env:
+      # Loads appsettings.Development.json (Jwt:Key etc.) so EF can create each service's DbContext.
+      # No database connection is made.
+      ASPNETCORE_ENVIRONMENT: Development
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - services/identity/Identity.Api
+          - services/forum/Forum.Api
+          - services/garden/Garden.Api
+          - services/notification/Notification.Api
+          - services/sensor/Sensor.Api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Install dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version "10.*"
+      - name: Check for model changes without a migration
+        # Fails when someone changed a Model but forgot: dotnet ef migrations add <Name> -o Data/Migrations
+        run: dotnet ef migrations has-pending-model-changes --project ${{ matrix.project }}
+
+  app:
+    name: App typecheck + web build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/mobile/package-lock.json
+      - run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Web build
+        run: npx expo export --platform web --output-dir dist
+        env:
+          CI: "1"
+          EXPO_OFFLINE: "1"
+      - name: Simulator syntax
+        working-directory: tools/sensor-simulator
+        run: node --check simulator.mjs
+
+  firmware:
+    name: ESP32 firmware compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ hashFiles('firmware/esp32-moisture/platformio.ini') }}
+      - run: pip install platformio
+      - name: Use the example config (real Wi-Fi details are never in the repository)
+        run: cp firmware/esp32-moisture/include/config.example.h firmware/esp32-moisture/include/config.h
+      - run: pio run -d firmware/esp32-moisture
+
+  docker:
+    name: Docker image - ${{ matrix.service.name }}
+    needs: [backend]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { name: identity, dockerfile: services/identity/Identity.Api/Dockerfile }
+          - { name: forum, dockerfile: services/forum/Forum.Api/Dockerfile }
+          - { name: garden, dockerfile: services/garden/Garden.Api/Dockerfile }
+          - { name: reminder, dockerfile: services/reminder/Reminder.Api/Dockerfile }
+          - { name: notification, dockerfile: services/notification/Notification.Api/Dockerfile }
+          - { name: ai-assistant, dockerfile: services/ai-assistant/AiAssistant.Api/Dockerfile }
+          - { name: sensor, dockerfile: services/sensor/Sensor.Api/Dockerfile }
+          - { name: gateway, dockerfile: services/gateway/Gateway.Api/Dockerfile }
+    steps:
+      - uses: actions/checkout@v7
+      - name: Image name (registry names must be lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/treeo/${{ matrix.service.name }}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4
+      - name: Log in to ghcr.io
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build (and push on main)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+
+  deploy:
+    name: Deploy to server
+    needs: [docker, migrations]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Pull the new images and restart over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ vars.DEPLOY_PATH || '$HOME/treeo' }}"
+            git pull --ff-only
+            cd infra
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app pull
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app up -d --remove-orphans
+            docker image prune -f
+            sleep 25
+            curl -fsS http://localhost/health/all
