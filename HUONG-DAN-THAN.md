@@ -45,7 +45,7 @@ Làm sau khi đã chạy được Identity theo `README.md` ở thư mục gốc
 Ở thư mục gốc dự án:
 
 ```powershell
-dotnet build MamXanh.slnx
+dotnet build TreeO.slnx
 dotnet test services/garden/Garden.Tests
 dotnet test services/reminder/Reminder.Tests
 dotnet test services/notification/Notification.Tests
@@ -54,7 +54,7 @@ dotnet test services/ai-assistant/AiAssistant.Tests
 
 Đúng khi: build `0 Error(s)`, mỗi lệnh test báo `Passed` và `Failed: 0`. Các test này **không cần** Docker, mạng hay API key vì chỉ kiểm tra hàm tính toán thuần.
 
-Nếu `dotnet build` báo lỗi package, chạy `dotnet restore MamXanh.slnx` rồi build lại.
+Nếu `dotnet build` báo lỗi package, chạy `dotnet restore TreeO.slnx` rồi build lại.
 
 ### 2.2. Cổng của các service
 
@@ -92,12 +92,12 @@ Mật khẩu **không nằm trong code**. Thay `MAT_KHAU_POSTGRES` và `MAT_KHAU
 ```powershell
 # Garden
 cd services/garden/Garden.Api
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=garden_db;Username=mamxanh;Password=MAT_KHAU_POSTGRES"
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=garden_db;Username=treeo;Password=MAT_KHAU_POSTGRES"
 dotnet user-secrets set "RabbitMq:Password" "MAT_KHAU_RABBITMQ"
 
 # Notification
 cd ../../notification/Notification.Api
-dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=notification_db;Username=mamxanh;Password=MAT_KHAU_POSTGRES"
+dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=notification_db;Username=treeo;Password=MAT_KHAU_POSTGRES"
 dotnet user-secrets set "RabbitMq:Password" "MAT_KHAU_RABBITMQ"
 
 # Reminder (chỉ cần RabbitMQ)
@@ -212,7 +212,7 @@ Mỗi service có file `.http` riêng, mở file rồi bấm **Send Request** t�
 
 1. Lấy `id` của bạn: chạy request `/api/auth/me` trong `Identity.Api.http` (trường `id`).
 2. Mở `http://localhost:15672`, đăng nhập bằng `RABBITMQ_USER` / `RABBITMQ_PASSWORD` trong `infra/.env`.
-3. Tab **Exchanges** → bấm `mamxanh.events` → mục **Publish message**:
+3. Tab **Exchanges** → bấm `treeo.events` → mục **Publish message**:
    - **Routing key:** `notification.test`
    - **Payload:**
      ```json
@@ -222,7 +222,7 @@ Mỗi service có file `.http` riêng, mở file rồi bấm **Send Request** t�
 4. Trên app, bấm chuông (hoặc gọi `GET /api/notifications`): thấy thông báo "Pump finished".
 5. Publish lại **cùng** `dedupKey` → vẫn chỉ có **1** thông báo (chống trùng).
 
-(`mamxanh.events` chỉ xuất hiện sau khi Notification đã chạy ít nhất một lần.)
+(`treeo.events` chỉ xuất hiện sau khi Notification đã chạy ít nhất một lần.)
 
 **Cách 2: thông báo nắng nóng thật**
 
@@ -236,7 +236,7 @@ Mỗi service có file `.http` riêng, mở file rồi bấm **Send Request** t�
 Chuỗi cần 3 ngày liên tiếp. Để không phải chờ, chèn 2 ngày trước vào database (thay `<id>` bằng id của bạn, dùng Docker):
 
 ```powershell
-docker exec -it mamxanh-postgres psql -U mamxanh -d garden_db
+docker exec -it treeo-postgres psql -U treeo -d garden_db
 ```
 
 Khi hiện dấu nhắc `garden_db=#`, dán câu SQL này (một dòng), Enter, rồi gõ `\q` để thoát:
@@ -247,7 +247,7 @@ INSERT INTO "WateringDays" ("UserId","Date","Count","LastWateredAtUtc") VALUES (
 
 Rồi bấm **Water now** trên app: chuỗi thành 3, thông báo "3-day care streak!" xuất hiện ở chuông. (Ngày trong bảng là ngày theo giờ Việt Nam, nên nếu máy chạy Postgres đang ở múi giờ UTC và đang gần nửa đêm thì có thể lệch 1 ngày; khi đó đổi `CURRENT_DATE` cho đúng ngày Việt Nam.)
 
-**Kiểm tra RabbitMQ không làm hỏng API:** tắt container RabbitMQ (`docker stop mamxanh-rabbitmq`), gọi `GET /api/weather` hoặc bấm tưới. API vẫn trả kết quả bình thường (chỉ không có thông báo). Bật lại bằng `docker start mamxanh-rabbitmq`.
+**Kiểm tra RabbitMQ không làm hỏng API:** tắt container RabbitMQ (`docker stop treeo-rabbitmq`), gọi `GET /api/weather` hoặc bấm tưới. API vẫn trả kết quả bình thường (chỉ không có thông báo). Bật lại bằng `docker start treeo-rabbitmq`.
 
 ### 4.3. Trên app
 
@@ -268,7 +268,7 @@ Rồi bấm **Water now** trên app: chuỗi thành 3, thông báo "3-day care s
 
 ```
 App ──(JWT)──> Reminder  ──┐
-App ──(JWT)──> Garden    ──┼─ publish NotificationRequested ─> RabbitMQ (exchange mamxanh.events)
+App ──(JWT)──> Garden    ──┼─ publish NotificationRequested ─> RabbitMQ (exchange treeo.events)
                            │                                        │ routing key "notification.<type>"
                            │                                        ▼
                            │                              queue notification.requests
@@ -279,7 +279,7 @@ App ──(JWT)──> AI Assistant ──> API của Google Gemini (hoặc Anth
 
 Mỗi service **tự kiểm tra JWT** bằng cùng `Jwt:Issuer/Audience/Key` với Identity (cùng cách Forum của Tâm làm), nên `Jwt` của các service mới phải **giống hệt** Identity.
 
-### 5.2. Hợp đồng tin nhắn (`shared/MamXanh.Contracts/Events/NotificationRequested.cs`)
+### 5.2. Hợp đồng tin nhắn (`shared/TreeO.Contracts/Events/NotificationRequested.cs`)
 
 Một file dùng chung cho cả bên gửi và bên nhận, để không gõ sai tên exchange/queue/routing key. `NotificationRequested` gồm: người nhận (`UserId`), loại (`Type`), tiêu đề/nội dung tiếng Anh dự phòng, tham số `Data` (vd `maxTemp`), khóa chống trùng `DedupKey`, thời điểm.
 
@@ -301,7 +301,7 @@ Loại `heatwave`, `streak` được app dịch sang EN/VI bằng `Data` (`src/i
 
 ### 5.5. Notification: nhận từ RabbitMQ
 
-- `NotificationConsumer` là `BackgroundService` chạy cùng service: khai báo exchange (topic) `mamxanh.events`, queue `notification.requests`, nối bằng `notification.#`. Nếu chưa kết nối được RabbitMQ thì thử lại sau 5 giây, **không làm sập** service.
+- `NotificationConsumer` là `BackgroundService` chạy cùng service: khai báo exchange (topic) `treeo.events`, queue `notification.requests`, nối bằng `notification.#`. Nếu chưa kết nối được RabbitMQ thì thử lại sau 5 giây, **không làm sập** service.
 - **Ack thủ công**: chỉ báo "đã xử lý" sau khi lưu database xong. Lỗi tạm thời (database) thì `nack` và đưa tin lại hàng đợi; tin hỏng (JSON sai, thiếu `userId`/`title`) thì bỏ, nếu cứ đưa lại sẽ lặp vô hạn.
 - `NotificationMessageParser` (hàm thuần, có test): đọc JSON, kiểm tra, cắt ngắn cho vừa độ dài cột database.
 - `NotificationIngestor`: lưu, **bỏ qua nếu `DedupKey` đã có** (có unique index trong database; đua nhau thì bắt lỗi trùng khóa).

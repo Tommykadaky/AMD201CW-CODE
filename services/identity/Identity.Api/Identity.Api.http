@@ -51,7 +51,7 @@ POST {{host}}/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "admin@mamxanh.local",
+  "email": "admin@treeo.local",
   "password": "Admin@12345"
 }
 

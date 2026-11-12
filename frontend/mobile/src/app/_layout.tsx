@@ -39,6 +39,7 @@ function RootStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="change-password" />
         <Stack.Screen name="notifications" />
+        <Stack.Screen name="pair-device" />
         <Stack.Screen name="new-post" options={{ presentation: "modal" }} />
       </Stack.Protected>
     </Stack>

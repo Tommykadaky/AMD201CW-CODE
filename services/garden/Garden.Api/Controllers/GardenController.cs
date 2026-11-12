@@ -4,7 +4,7 @@ using Garden.Api.DTOs;
 using Garden.Api.Messaging;
 using Garden.Api.Models;
 using Garden.Api.Services;
-using MamXanh.Contracts.Events;
+using TreeO.Contracts.Events;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

@@ -1,5 +1,5 @@
 using System.Text.Json;
-using MamXanh.Contracts.Events;
+using TreeO.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Notification.Api.Data;
 using Notification.Api.Models;

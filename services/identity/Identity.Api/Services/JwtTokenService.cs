@@ -9,8 +9,8 @@ namespace Identity.Api.Services;
 
 public class JwtSettings
 {
-    public string Issuer { get; set; } = "mamxanh-identity";
-    public string Audience { get; set; } = "mamxanh";
+    public string Issuer { get; set; } = "treeo-identity";
+    public string Audience { get; set; } = "treeo";
     public string Key { get; set; } = "";               // It nhat 32 ky tu
     public int AccessTokenMinutes { get; set; } = 60;
     public int RefreshTokenDays { get; set; } = 7;

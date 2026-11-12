@@ -47,7 +47,7 @@ Chép đè các file mới vào `services/identity/Identity.Api/`. Không cần 
 4. Khai báo mật khẩu database (giống Identity nhưng database là `forum_db`):
    ```powershell
    dotnet user-secrets init
-   dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=forum_db;Username=mamxanh;Password=MAT_KHAU_POSTGRES"
+   dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5432;Database=forum_db;Username=treeo;Password=MAT_KHAU_POSTGRES"
    ```
 5. Tạo bảng:
    ```powershell

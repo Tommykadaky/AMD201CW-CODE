@@ -31,6 +31,6 @@ GET {{host}}/api/notifications
 POST {{host}}/api/notifications/00000000-0000-0000-0000-000000000001/read
 Authorization: Bearer {{login.response.body.accessToken}}
 
-### Muon co thong bao de xem: dung RabbitMQ Management (http://localhost:15672) -> Exchanges -> mamxanh.events
+### Muon co thong bao de xem: dung RabbitMQ Management (http://localhost:15672) -> Exchanges -> treeo.events
 ### -> Publish message, hoac gui tu Garden (xong 3 ngay tuoi lien tiep) / Reminder (nang nong).
 ### Chi tiet xem HUONG-DAN-THAN.md muc "Test RabbitMQ".

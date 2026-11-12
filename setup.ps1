@@ -1,4 +1,4 @@
-# Mam Xanh - tao khung du an (chay 1 lan o thu muc goc)
+# TreeO - tao khung du an (chay 1 lan o thu muc goc)
 $ErrorActionPreference = "Stop"
 
 function Add-Keep($path) {
@@ -8,12 +8,12 @@ function Add-Keep($path) {
 
 Write-Host "== Tao .gitignore va solution ==" -ForegroundColor Green
 dotnet new gitignore --force
-dotnet new sln -n MamXanh
+dotnet new sln -n TreeO
 
 Write-Host "== Tao thu vien dung chung ==" -ForegroundColor Green
-dotnet new classlib -n MamXanh.Contracts -o shared/MamXanh.Contracts
-dotnet sln add shared/MamXanh.Contracts
-Add-Keep "shared/MamXanh.Contracts/Events"
+dotnet new classlib -n TreeO.Contracts -o shared/TreeO.Contracts
+dotnet sln add shared/TreeO.Contracts
+Add-Keep "shared/TreeO.Contracts/Events"
 
 $services = @(
     @{ Folder = "identity";      Name = "Identity" },
@@ -35,7 +35,7 @@ foreach ($s in $services) {
     dotnet new xunit  -n "$($s.Name).Tests" -o $tests
     dotnet sln add $api $tests
     dotnet add $tests reference $api
-    dotnet add $api reference shared/MamXanh.Contracts
+    dotnet add $api reference shared/TreeO.Contracts
 
     foreach ($sub in @("Services", "Data", "Models", "DTOs", "Messaging")) {
         Add-Keep "$api/$sub"

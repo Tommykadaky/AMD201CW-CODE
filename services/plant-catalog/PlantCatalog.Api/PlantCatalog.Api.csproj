@@ -11,7 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\shared\MamXanh.Contracts\MamXanh.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\shared\TreeO.Contracts\TreeO.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

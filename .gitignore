@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# ESP32 firmware: personal Wi-Fi and device key, and PlatformIO build output
+firmware/esp32-moisture/include/config.h
+firmware/esp32-moisture/.pio/
